@@ -264,12 +264,16 @@ replies, approval prompts, recovery notices, or the `/toolbar` command.
 
 By default, `tool_use` and `tool_result` events from Claude/Codex/Gemini are forwarded to Telegram. You can suppress them globally or per-window when they create more noise than signal (e.g., during heavy file or grep work).
 
+Tool calls default to **verbose** delivery: commands and arguments remain visible, followed by separate result messages. Longer arguments and results use expandable quotes. `/verbose` cycles through verbose, batched, and ephemeral display modes; the latter two retain compact summaries.
+
 - **Global**: `CCGRAM_HIDE_TOOL_CALLS=true` or `--hide-tool-calls` makes the global default `hidden`.
 - **Per-window**: `/toolcalls` in a topic cycles `default → shown → hidden`. The per-window setting always wins over the global default.
 
 Hook events (Stop, StopFailure, SubagentStart/Stop, TaskCompleted, TeammateIdle) are **never** suppressed — they bypass the gate so you still see what matters.
 
 ## Delivery, Backlog, and Jump to Live
+
+Assistant Markdown tables are sent with Telegram's native `sendRichMessage` API, keeping tables between the surrounding paragraphs. If the API rejects a rich message, CCGram falls back to normal text delivery.
 
 ### Lossless text batching
 

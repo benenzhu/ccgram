@@ -872,7 +872,10 @@ class TestMessageQueueWorker:
             chat_id=-1001,
         )
         bot.set_side_effect("edit_message_text", [RetryAfter(1), True])
-        with patch.object(mq, "clear_status_message", new_callable=AsyncMock):
+        with (
+            patch.object(mq, "clear_status_message", new_callable=AsyncMock),
+            patch.object(mq, "get_batch_mode", return_value="batched"),
+        ):
             with pytest.raises(RetryAfter):
                 await mq._try_edit_tool_result(bot, 88008, -1001, 42, task)
             assert mq._tool_msg_ids[key] == 123

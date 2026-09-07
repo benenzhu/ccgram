@@ -54,7 +54,7 @@ class TestReads:
     ) -> None:
         monkeypatch.setattr(config, "ephemeral_tools", False, raising=False)
         store.window_states["@1"] = WindowState(batch_mode="garbage")
-        assert get_batch_mode("@1") == "ephemeral"
+        assert get_batch_mode("@1") == "verbose"
 
     def test_is_ephemeral_tools(self, store: WindowStateStore) -> None:
         store.window_states["@1"] = WindowState(batch_mode="ephemeral")
@@ -111,8 +111,8 @@ class TestWrites:
     def test_set_batch_mode_persists(
         self, store: WindowStateStore, save_calls: list[int]
     ) -> None:
-        set_batch_mode("@1", "verbose")
-        assert store.window_states["@1"].batch_mode == "verbose"
+        set_batch_mode("@1", "batched")
+        assert store.window_states["@1"].batch_mode == "batched"
         assert len(save_calls) == 1
 
     def test_set_batch_mode_noop_no_save(

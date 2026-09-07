@@ -31,7 +31,7 @@ logger = structlog.get_logger()
 APPROVAL_MODES: frozenset[str] = frozenset({"normal", "yolo"})
 DEFAULT_APPROVAL_MODE = "normal"
 BATCH_MODES: frozenset[str] = frozenset({"batched", "ephemeral", "verbose"})
-DEFAULT_BATCH_MODE = "ephemeral"
+DEFAULT_BATCH_MODE = "verbose"
 _BATCH_CYCLE: dict[str, str] = {
     "batched": "ephemeral",
     "ephemeral": "verbose",

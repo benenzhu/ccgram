@@ -11,6 +11,7 @@ Key function:
 """
 
 from ..expandable_quote import EXPANDABLE_QUOTE_END, EXPANDABLE_QUOTE_START
+from ..markdown_tables import split_markdown_tables
 from ..telegram_sender import split_message
 
 # Max length for user messages before truncation
@@ -68,6 +69,21 @@ def build_response_parts(
             return [f"{prefix}{separator}{text}"]
         else:
             return [text]
+
+    if role == "assistant" and content_type == "text" and is_complete:
+        segments = split_markdown_tables(text)
+        if any(is_table for _, is_table in segments):
+            # Tables go through sendRichMessage whole; prose keeps normal paging.
+            return [
+                part
+                for segment, is_table in segments
+                if segment.strip()
+                for part in (
+                    [segment.strip()]
+                    if is_table
+                    else split_message(segment.strip(), max_length=3000)
+                )
+            ]
 
     # Split raw markdown text, then each chunk is sent individually.
     # Entity conversion happens at send time.

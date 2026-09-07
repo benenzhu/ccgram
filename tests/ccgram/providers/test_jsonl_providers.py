@@ -527,7 +527,7 @@ class TestCodexCustomToolCall:
         assert pending == {}
         assert messages[0].tool_use_id is None
 
-    def test_long_input_truncated_in_summary(self) -> None:
+    def test_long_input_keeps_short_heading_and_full_details(self) -> None:
         codex = CodexProvider()
         entries = [
             {
@@ -542,7 +542,8 @@ class TestCodexCustomToolCall:
         ]
         messages, _ = codex.parse_transcript_entries(entries, {})
         assert "…" in messages[0].text
-        assert len(messages[0].text) < 300
+        assert len(messages[0].text.split("\n", 1)[0]) < 100
+        assert "x" * 300 in messages[0].text
 
 
 class TestCustomToolCallOutput:

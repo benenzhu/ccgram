@@ -9,6 +9,9 @@ individual providers is replaced by this module.
 from __future__ import annotations
 
 import re
+import json
+
+from .expandable_quote import format_expandable_quote
 
 # ---------------------------------------------------------------------------
 # Emoji map
@@ -135,3 +138,23 @@ def format_tool_line(name: str, summary: str) -> str:
     if trimmed:
         return f"{emoji} **{display_name}**: `{trimmed}`"
     return f"{emoji} **{display_name}**"
+
+
+def format_tool_details(summary: str, inputs: object) -> str:
+    """Retain tool arguments below the compact heading for verbose delivery."""
+    if not inputs:
+        return summary
+    if isinstance(inputs, str):
+        details = inputs
+    elif isinstance(inputs, dict):
+        command = inputs.get("cmd") or inputs.get("command")
+        if isinstance(command, str):
+            rest = {k: v for k, v in inputs.items() if k not in {"cmd", "command"}}
+            details = command
+            if rest:
+                details += "\n\n" + json.dumps(rest, ensure_ascii=False, indent=2)
+        else:
+            details = json.dumps(inputs, ensure_ascii=False, indent=2)
+    else:
+        details = str(inputs)
+    return summary + "\n" + format_expandable_quote(details)

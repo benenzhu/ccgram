@@ -272,7 +272,7 @@ def _format_task_list_section(entry: ToolBatchEntry) -> list[str]:
 
 def _format_batch_entry(entry: ToolBatchEntry, count: int = 1) -> str:
     """Render one standard batch row \u2014 name + summary only, no status glyph."""
-    line = entry.tool_use_text
+    line = entry.tool_use_text.split("\n", 1)[0]
     if count > 1:
         line = f"{line} \u00d7{count}"
     return line
@@ -290,7 +290,7 @@ def _extract_task_tool_suffix(entry: ToolBatchEntry) -> str:
     formats (``**Name** `summary`` and bare ``TaskCreate Title``) for back-
     compat with anything still sitting in old batches.
     """
-    text = entry.tool_use_text.strip()
+    text = entry.tool_use_text.split("\n", 1)[0].strip()
     if not text:
         return ""
 

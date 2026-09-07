@@ -475,11 +475,11 @@ class TestApprovalMode:
 
 
 class TestBatchMode:
-    def test_default_is_batched(self, store: WindowStateStore) -> None:
-        assert store.get_batch_mode("@1") == "ephemeral"
+    def test_default_is_verbose(self, store: WindowStateStore) -> None:
+        assert store.get_batch_mode("@1") == "verbose"
 
     def test_unknown_window_returns_default(self, store: WindowStateStore) -> None:
-        assert store.get_batch_mode("@missing") == "ephemeral"
+        assert store.get_batch_mode("@missing") == "verbose"
 
     def test_set_verbose(self, store: WindowStateStore) -> None:
         store.set_batch_mode("@1", "verbose")
@@ -495,9 +495,8 @@ class TestBatchMode:
         store.set_batch_mode("@1", "verbose")
         assert store._save_calls == []  # type: ignore[attr-defined]
 
-    def test_cycle_default_to_verbose(self, store: WindowStateStore) -> None:
-        # Default is "ephemeral"; one cycle advances to "verbose".
-        assert store.cycle_batch_mode("@1") == "verbose"
+    def test_cycle_default_to_batched(self, store: WindowStateStore) -> None:
+        assert store.cycle_batch_mode("@1") == "batched"
 
     def test_cycle_ephemeral_to_verbose(self, store: WindowStateStore) -> None:
         store.set_batch_mode("@1", "ephemeral")
@@ -508,16 +507,16 @@ class TestBatchMode:
         assert store.cycle_batch_mode("@1") == "batched"
 
     def test_cycle_full_loop(self, store: WindowStateStore) -> None:
-        # ephemeral -> verbose -> batched -> ephemeral.
-        assert store.cycle_batch_mode("@1") == "verbose"
+        # verbose -> batched -> ephemeral -> verbose.
         assert store.cycle_batch_mode("@1") == "batched"
         assert store.cycle_batch_mode("@1") == "ephemeral"
+        assert store.cycle_batch_mode("@1") == "verbose"
 
     def test_corrupt_stored_value_falls_back_to_default(
         self, store: WindowStateStore
     ) -> None:
         store.get_window_state("@1").batch_mode = "garbage"
-        assert store.get_batch_mode("@1") == "ephemeral"
+        assert store.get_batch_mode("@1") == "verbose"
 
 
 class TestSetWindowOrigin:

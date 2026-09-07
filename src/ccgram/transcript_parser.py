@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ccgram.expandable_quote import EXPANDABLE_QUOTE_START, format_expandable_quote
-from ccgram.tool_format import format_tool_line
+from ccgram.tool_format import format_tool_details, format_tool_line
 
 from .utils import shorten_path
 
@@ -448,7 +448,7 @@ class TranscriptParser:
         entries.append(
             ParsedEntry(
                 role="assistant",
-                text=summary,
+                text=format_tool_details(summary, inp),
                 content_type="tool_use",
                 tool_use_id=tool_id or None,
                 timestamp=timestamp,

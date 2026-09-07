@@ -21,7 +21,7 @@ from typing import Any, cast
 from ccgram.expandable_quote import format_expandable_quote
 from ccgram.providers.codex_format import format_codex_interactive_prompt
 from ccgram.providers._jsonl import JsonlProvider
-from ccgram.tool_format import format_tool_line
+from ccgram.tool_format import format_tool_details, format_tool_line
 from ccgram.providers.base import (
     RESUME_ID_RE,
     AgentMessage,
@@ -162,7 +162,7 @@ def _format_tool_use_text(raw_tool_name: str, args: dict[str, Any]) -> str:
     """Build display text for a Codex tool_use item."""
     tool_name = _canonical_tool_name(raw_tool_name)
     summary = _summarize_tool_use(raw_tool_name, tool_name, args)
-    return format_tool_line(tool_name, summary)
+    return format_tool_details(format_tool_line(tool_name, summary), args)
 
 
 def _summarize_tool_use(
@@ -266,7 +266,7 @@ def _parse_custom_tool_call(
         # regex never scans tens of KB — the final cap is 80 chars anyway.
         summary = input_text[:512]
 
-    text = format_tool_line(tool_name, summary)
+    text = format_tool_details(format_tool_line(tool_name, summary), input_text)
     return (
         [
             AgentMessage(

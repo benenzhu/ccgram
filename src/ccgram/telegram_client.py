@@ -50,6 +50,10 @@ class TelegramClient(Protocol):
         **kwargs: Any,
     ) -> Message: ...
 
+    async def send_rich_message(
+        self, chat_id: int | str, markdown: str, **kwargs: Any
+    ) -> Message: ...
+
     async def edit_message_text(
         self,
         text: str,
@@ -200,6 +204,20 @@ class PTBTelegramClient:
             chat_id=chat_id,
             text=text,
             **kwargs,
+        )
+
+    async def send_rich_message(
+        self, chat_id: int | str, markdown: str, **kwargs: Any
+    ) -> Message:
+        """Bot API 10.1 rich Markdown, using PTB's existing transport and limiter."""
+        return await self._bot.do_api_request(
+            "sendRichMessage",
+            api_kwargs={
+                "chat_id": chat_id,
+                "rich_message": {"markdown": markdown},
+                **kwargs,
+            },
+            return_type=Message,
         )
 
     async def edit_message_text(
@@ -421,6 +439,14 @@ class FakeTelegramClient:
                 "text": text,
                 **kwargs,
             },
+        )
+
+    async def send_rich_message(
+        self, chat_id: int | str, markdown: str, **kwargs: Any
+    ) -> Message:
+        return self._record(
+            "send_rich_message",
+            {"chat_id": chat_id, "markdown": markdown, **kwargs},
         )
 
     async def edit_message_text(

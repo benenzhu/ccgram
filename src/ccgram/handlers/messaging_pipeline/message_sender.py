@@ -26,7 +26,7 @@ from telegramify_markdown import utf16_len
 from ...config import config
 from ...entity_formatting import convert_to_entities
 from ...telegram_client import TelegramClient
-from ...telegram_sender import TELEGRAM_MAX_MESSAGE_LENGTH
+from ...telegram_sender import TELEGRAM_MAX_MESSAGE_LENGTH, split_message
 from ..reactions import (
     ALLOWED_REACTIONS,
     REACT_DONE,
@@ -54,6 +54,7 @@ __all__ = [
     "rate_limit_send",
     "rate_limit_send_formatted_message",
     "rate_limit_send_message",
+    "rate_limit_send_rich_message",
     "react",
     "safe_edit",
     "safe_reply",
@@ -261,6 +262,29 @@ async def rate_limit_send_formatted_message(
     return await _send_formatted_with_fallback(
         client, chat_id, plain_text, entities, **kwargs
     )
+
+
+async def rate_limit_send_rich_message(
+    client: TelegramClient, chat_id: int, markdown: str, **kwargs: Any
+) -> Message | None:
+    """Send native tables, falling back to paginated text if unsupported."""
+    await rate_limit_send(chat_id)
+    try:
+        return await client.send_rich_message(chat_id, markdown, **kwargs)
+    except RetryAfter:
+        raise
+    except TelegramError as exc:
+        if is_thread_gone(exc):
+            return None
+        logger.warning("Rich message failed; using text fallback: %s", exc)
+
+    sent: Message | None = None
+    # Leave room for UTF-16 expansion; large tables must not be silently capped.
+    for part in split_message(markdown, max_length=1800):
+        sent = await rate_limit_send_message(client, chat_id, part, **kwargs)
+        if sent is None:
+            return None
+    return sent
 
 
 async def safe_reply(message: Message, text: str, **kwargs: Any) -> Message | None:

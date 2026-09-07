@@ -21,6 +21,7 @@ from telegramify_markdown import utf16_len
 
 from ...config import config
 from ...entity_formatting import convert_to_entities
+from ...markdown_tables import has_markdown_table
 from ...delivery_contract import (
     DeliveryOutcome,
     DeliveryReceipt,
@@ -39,6 +40,7 @@ from ...multiplexer.window_liveness import is_window_live, reset_window_liveness
 from ...utils import task_done_callback
 from ...tts import TtsSynthesisError, get_synthesizer, prepare_tts_text
 from ...window_query import is_tool_calls_hidden
+from ...window_state_ports.tool_state import get_batch_mode
 from ..status.status_bubble import (
     clear_status_message,
     convert_status_to_content,
@@ -51,6 +53,7 @@ from .message_sender import (
     rate_limit_send,
     rate_limit_send_formatted_message,
     rate_limit_send_message,
+    rate_limit_send_rich_message,
     send_kwargs,
 )
 from .message_task import (
@@ -398,6 +401,8 @@ def _can_merge_tasks(base: ContentTask, candidate: MessageTask) -> bool:
         or not base.parts[0].strip()
         or not candidate.parts[0].strip()
     ):
+        return False
+    if has_markdown_table(base.parts[0]) or has_markdown_table(candidate.parts[0]):
         return False
     # A text task can produce a voice message when TTS is configured.  Keep
     # those media deliveries one-for-one with their source task.
@@ -943,6 +948,10 @@ async def _try_edit_tool_result(
     if task.content_type != "tool_result" or not task.tool_use_id:
         return False
     key = (task.tool_use_id, user_id, tkey)
+    if get_batch_mode(task.window_id) == "verbose":
+        # Keep the command/arguments visible when its result arrives.
+        _tool_msg_ids.pop(key, None)
+        return False
     edit_msg_id = _tool_msg_ids.get(key)
     if edit_msg_id is None:
         return False
@@ -966,7 +975,7 @@ async def _try_edit_tool_result(
     return success
 
 
-async def _process_content_task(
+async def _process_content_task(  # noqa: C901 — text, table, and tool delivery share one queue task
     client: TelegramClient, user_id: int, task: ContentTask
 ) -> DeliveryOutcome:
     """Process a content message task and report whether it reached Telegram."""
@@ -998,8 +1007,15 @@ async def _process_content_task(
     last_msg_id: int | None = None
     for part in task.parts:
         sent = None
+        if first_part and task.content_type == "tool_result" and task.tool_name:
+            part = f"↳ **{task.tool_name} result**\n{part}"
+        native_table = (
+            task.role == "assistant"
+            and task.content_type == "text"
+            and has_markdown_table(part)
+        )
 
-        if first_part and task.chat_id is None:
+        if first_part and task.chat_id is None and not native_table:
             first_part = False
             converted_msg_id = await convert_status_to_content(
                 client,
@@ -1014,9 +1030,8 @@ async def _process_content_task(
         else:
             first_part = False
 
-        sent = await rate_limit_send_message(
-            client, chat_id, part, **send_kwargs(task.thread_id)
-        )
+        send = rate_limit_send_rich_message if native_table else rate_limit_send_message
+        sent = await send(client, chat_id, part, **send_kwargs(task.thread_id))
 
         if sent:
             last_msg_id = sent.message_id
@@ -1034,7 +1049,12 @@ async def _process_content_task(
             window_id=task.window_id,
         )
 
-    if last_msg_id and task.tool_use_id and task.content_type == "tool_use":
+    if (
+        last_msg_id
+        and task.tool_use_id
+        and task.content_type == "tool_use"
+        and get_batch_mode(task.window_id) != "verbose"
+    ):
         _tool_msg_ids[(task.tool_use_id, user_id, tkey)] = last_msg_id
     return DeliveryOutcome.DELIVERED
 
