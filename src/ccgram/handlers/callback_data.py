@@ -87,6 +87,7 @@ CB_RESUME_CANCEL = "res:x"  # cancel resume browser
 # Provider selection (directory browser flow)
 CB_PROV_SELECT = "prov:"  # prov:<provider_name>
 CB_MODE_SELECT = "mode:"  # mode:<provider_name>:<normal|yolo>
+CB_CREATE_SESSION = "cs:"  # cs:<picker-token>:<pick|page|fresh>[:index]
 
 # Worktree picker (directory browser flow — inserted before provider pick
 # when the confirmed directory is an eligible git repo)

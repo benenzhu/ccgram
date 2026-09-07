@@ -1,7 +1,7 @@
 """Typed accessor for the per-user directory-browser / topic-creation flow state.
 
-All 14 user_data keys used across the directory browser, worktree picker, workspace
-picker, and window-launch flow are centralised here.  ``TopicCreationDraft`` wraps a
+User-data keys used across the directory browser, worktree picker, workspace
+picker, session picker, and window-launch flow are centralised here. ``TopicCreationDraft`` wraps a
 ``context.user_data`` dict and exposes typed properties so call sites don't scatter
 raw string literals.
 """
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from ..callback_helpers import get_thread_id
 from ..user_state import (
     AWAITING_WORKTREE_BRANCH_NAME,
+    PENDING_SESSION_SELECTION,
     PENDING_THREAD_ID,
     PENDING_THREAD_TEXT,
     PENDING_WORKSPACE_ID,
@@ -40,6 +41,7 @@ __all__ = [
     "BROWSE_DIRS_KEY",
     "BROWSE_PAGE_KEY",
     "BROWSE_PATH_KEY",
+    "PENDING_SESSION_SELECTION",
     "PENDING_THREAD_ID",
     "PENDING_THREAD_TEXT",
     "PENDING_WORKSPACE_ID",

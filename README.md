@@ -112,7 +112,7 @@ Get your user ID from [@userinfobot](https://t.me/userinfobot). For a group, get
 ccgram
 ```
 
-Open the configured group or private bot chat. Create a topic and send a message. The directory browser appears. Pick a project directory and an agent (Claude, Codex, Gemini, Pi, or Shell).
+Open the configured group or private bot chat. Create a topic and send a message. The directory browser appears. Pick a project directory and an agent (Claude, Codex, Gemini, Pi, or Shell). After choosing the permission mode, Claude and Codex offer that directory's saved conversations to resume, or you can start fresh.
 
 **Prerequisites:** Python 3.14+, [tmux](https://github.com/tmux/tmux), [herdr](https://github.com/ogulcancelik/herdr), or [agterm](https://github.com/umputun/agterm), and one agent CLI. CCGram does not modify agent SDKs.
 

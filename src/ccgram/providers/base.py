@@ -51,6 +51,7 @@ class ResumableSession:
     provider_name: str
     mtime: float = 0.0
     msg_count: int | None = None
+    transcript_path: str = ""
 
 
 @dataclass(frozen=True, slots=True)

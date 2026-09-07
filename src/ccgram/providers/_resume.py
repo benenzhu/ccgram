@@ -134,6 +134,7 @@ def _parse_index_entry(
         provider_name="claude",
         mtime=mtime,
         msg_count=index_message_count(entry),
+        transcript_path=str(session_file),
     )
 
 
@@ -175,6 +176,7 @@ def _scan_bare_jsonl(
                     cwd=normalized_project,
                     provider_name="claude",
                     mtime=mtime,
+                    transcript_path=str(jsonl_file),
                 ),
             )
         )

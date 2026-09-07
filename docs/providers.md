@@ -13,7 +13,7 @@ CCGram supports multiple agent CLI backends. Each Telegram topic can use a diffe
 | Antigravity | `agy`       | No          | Yes    | Yes      | JSONL      | Transcript activity heuristic + `/status` snapshot                    |
 | Shell       | `bash`      | No          | No     | No       | None       | Shell prompt idle detection                                           |
 
-`Resume` in this table means the CLI accepts a known session ID. CCGram's Telegram Resume picker can enumerate sessions for Claude and Antigravity. Codex, Gemini, and Pi currently expose Fresh and Continue recovery actions only.
+`Resume` in this table means the CLI accepts a known session ID. CCGram's Telegram Resume picker can enumerate sessions for Claude, Codex, and Antigravity. Gemini and Pi currently expose Fresh and Continue recovery actions only.
 
 ## Transcript Delivery Guarantees
 
@@ -27,6 +27,8 @@ Delivery is at-least-once. CCGram persists a transcript's delivered watermark on
 
 - `✅ Standard` (normal approvals)
 - `🚀 YOLO` (provider-specific permissive mode)
+
+For Claude, Codex, and Antigravity, CCGram then lists saved conversations for the selected directory, newest first, with pagination and a **Start fresh** option. Selecting a conversation resumes its exact session ID and preserves the chosen permission mode, workspace, and pending message. With no saved conversations, CCGram starts a new session directly. A new worktree has its own directory and does not inherit the parent checkout's conversations.
 
 **From the terminal**: If you create a window manually and start an agent CLI, CCGram auto-detects the provider from the running process name. When the pane command is a JS runtime wrapper (node, bun), it inspects the pane's foreground process to reliably identify the actual CLI. How the foreground process is read is owned by the multiplexer backend — tmux uses `ps -t <tty>`, herdr reads `pane process-info` (no tty needed), and agterm reports foreground argv (no tty or process-group ID) — so detection works through the same seam on all three. The shell provider uses the same seam to classify a bare shell pane, except on agterm: its foreground argv is absent at an idle shell prompt, so the Shell provider is unavailable there. As a last resort, Gemini pane-title symbols (`✦`, `✋`, `◇`) are checked.
 
@@ -140,6 +142,10 @@ For Codex, `/status` sends a transcript-based fallback snapshot in Telegram (ses
 ### Codex Transcript
 
 Codex transcripts are JSONL files under `~/.codex/sessions/`. They are read incrementally (byte offsets).
+
+### Codex History and Resume
+
+The new-topic picker, `/resume`, and the recovery **Resume** button enumerate saved interactive conversations from `$CODEX_HOME/sessions/` (default `~/.codex/sessions/`). History enumeration includes old and idle conversations, filters by exact working directory when creating a topic, and excludes subagent and non-interactive `codex exec` transcripts. Labels use the first human prompt and the last-modified time. Selecting a conversation launches `codex resume <session_id>`; **Continue** still uses `codex resume --last`.
 
 ## Gemini CLI
 

@@ -10,6 +10,8 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from ccgram.multiplexer.base import TopicTargetResult
+from ccgram.providers import registry as provider_registry
+from ccgram.providers.base import ResumableSession
 from ccgram.handlers.topics.window_launch_service import (
     WindowLaunchRequest,
     _create_topic_window,
@@ -326,6 +328,74 @@ def _request(**overrides) -> WindowLaunchRequest:
 
 
 class TestLaunchWindowSuccess:
+    @pytest.mark.parametrize("provider_name", ["claude", "codex"])
+    async def test_resume_uses_selected_id_and_preserves_launch_mode(
+        self, tmp_path, provider_name
+    ) -> None:
+        session_id = "aaaaaaaa-bbbb-cccc-dddd-000000000001"
+        resumed = ResumableSession(
+            session_id, "Saved chat", str(tmp_path), provider_name
+        )
+        provider = provider_registry.get(provider_name)
+        command = f"{provider_name} --custom-option"
+        with _launch_env(launch_command=command) as m:
+            m.registry.get.return_value.make_launch_args.side_effect = (
+                provider.make_launch_args
+            )
+            await launch_window(
+                _make_query(),
+                _make_context(),
+                _request(
+                    cwd=str(tmp_path),
+                    provider_name=provider_name,
+                    mode="yolo",
+                    resume_session=resumed,
+                ),
+            )
+
+        call = m.mux.create_topic_target.await_args
+        assert call is not None
+        assert (
+            call.kwargs["launch_command"]
+            == f"{command} {provider.make_launch_args(resume_id=session_id)}"
+        )
+        m.session.set_window_approval_mode.assert_called_once_with("@5", "yolo")
+
+    async def test_resume_without_hook_registers_exact_transcript(
+        self, tmp_path
+    ) -> None:
+        transcript = tmp_path / "saved.jsonl"
+        transcript.write_text("{}\n")
+        resumed = ResumableSession(
+            "saved-id",
+            "Saved chat",
+            str(tmp_path),
+            "codex",
+            transcript_path=str(transcript),
+        )
+        with _launch_env(supports_hook=True, launch_command="codex") as m:
+            m.registry.get.return_value.make_launch_args.return_value = (
+                "resume saved-id"
+            )
+            m.mux.capabilities.native_topic_targets = False
+            m.mux.create_window = AsyncMock(
+                return_value=(True, "created", "project", "@5")
+            )
+            m.session_map.wait_for_session_map_entry.side_effect = [False, True]
+            result = await launch_window(
+                _make_query(),
+                _make_context(),
+                _request(
+                    cwd=str(tmp_path), provider_name="codex", resume_session=resumed
+                ),
+            )
+
+        assert result.success
+        m.session_map.write_hookless_session_map.assert_called_once_with(
+            "@5", "saved-id", str(tmp_path), str(transcript), "codex"
+        )
+        m.mux.kill_window.assert_not_awaited()
+
     async def test_creates_window_and_binds_thread(self, tmp_path) -> None:
         query = _make_query()
         context = _make_context({PENDING_THREAD_ID: 42})

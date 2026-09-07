@@ -40,6 +40,7 @@ from ..topics.worktree import (
     validate_branch_name,
     worktree_path_for,
 )
+from ..topics.topic_creation_draft import PENDING_SESSION_SELECTION
 from ..interactive import get_interactive_window, handle_interactive_ui
 from ..messaging_pipeline.message_queue import enqueue_status_update
 from ..live.pane_callbacks import apply_pane_rename
@@ -199,9 +200,14 @@ async def _check_ui_guards(
     if user_data.get(STATE_KEY) == STATE_BROWSING_DIRECTORY:
         pending_tid = user_data.get(PENDING_THREAD_ID)
         if pending_tid == thread_id:
+            picker = (
+                "session picker"
+                if user_data.get(PENDING_SESSION_SELECTION) is not None
+                else "directory browser"
+            )
             await safe_reply(
                 message,
-                "Please use the directory browser above, or tap Cancel.",
+                f"Please use the {picker} above, or tap Cancel.",
             )
             return True
         # Stale browsing state from a different thread — clear it.

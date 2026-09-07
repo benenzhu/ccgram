@@ -1,7 +1,7 @@
 """Provider and mode selection callbacks for the topic-creation flow.
 
-Handles CB_PROV_SELECT (select provider, then show mode picker or go direct to
-window creation) and CB_MODE_SELECT (select launch mode and create the window).
+Handles CB_PROV_SELECT and CB_MODE_SELECT, then offers saved conversations
+before creating the window when the provider supports history browsing.
 
 Both ultimately call ``launch_window`` from ``window_launch_service``.
 """
@@ -28,6 +28,7 @@ from .topic_creation_draft import (
     _required_selected_path,
 )
 from .window_launch_service import WindowLaunchRequest, launch_window
+from .session_picker import offer_session_picker
 
 if TYPE_CHECKING:
     from telegram import CallbackQuery, Update
@@ -54,10 +55,9 @@ async def _validate_provider_select(
 
     confirm_thread_id = get_thread_id(update)
     if pending_thread_id is not None and confirm_thread_id != pending_thread_id:
-        # _handle_mode_select clears browse state before calling this, so
-        # _check_ui_guards can no longer catch a leftover worktree flow on
-        # a later message — clear it here or the CREATING re-entrancy flag
-        # sticks and blocks every future worktree confirm.
+        # Discard the mismatched flow's worktree intent so its CREATING
+        # re-entrancy flag cannot block a subsequent worktree confirm.
+        clear_browse_state(context.user_data)
         clear_worktree_state(context.user_data)
         if context.user_data is not None:
             context.user_data.pop(PENDING_THREAD_ID, None)
@@ -119,24 +119,22 @@ async def _handle_provider_select(
         return
 
     if not has_yolo_mode(provider_name):
-        # No mode picker needed — go directly to window creation
-        clear_browse_state(context.user_data)
-        await launch_window(
-            query,
-            context,
-            WindowLaunchRequest(
-                user_id=user_id,
-                thread_id=pending_thread_id,
-                provider_name=provider_name,
-                cwd=selected_path,
-                mode="normal",
-                pending_text=(
-                    context.user_data.get(PENDING_THREAD_TEXT)
-                    if context.user_data
-                    else None
-                ),
+        request = WindowLaunchRequest(
+            user_id=user_id,
+            thread_id=pending_thread_id,
+            provider_name=provider_name,
+            cwd=selected_path,
+            mode="normal",
+            pending_text=(
+                context.user_data.get(PENDING_THREAD_TEXT)
+                if context.user_data
+                else None
             ),
         )
+        if await offer_session_picker(query, context, request):
+            return
+        clear_browse_state(context.user_data)
+        await launch_window(query, context, request)
         return
 
     text, keyboard = build_mode_picker(selected_path, provider_name)
@@ -182,26 +180,22 @@ async def _handle_mode_select(
         context.user_data.get(PENDING_THREAD_ID) if context.user_data else None
     )
 
-    clear_browse_state(context.user_data)
-
     if not await _validate_provider_select(
         query, user_id, update, context, pending_thread_id
     ):
         return
 
-    await launch_window(
-        query,
-        context,
-        WindowLaunchRequest(
-            user_id=user_id,
-            thread_id=pending_thread_id,
-            provider_name=provider_name,
-            cwd=selected_path,
-            mode=approval_mode,
-            pending_text=(
-                context.user_data.get(PENDING_THREAD_TEXT)
-                if context.user_data
-                else None
-            ),
+    request = WindowLaunchRequest(
+        user_id=user_id,
+        thread_id=pending_thread_id,
+        provider_name=provider_name,
+        cwd=selected_path,
+        mode=approval_mode,
+        pending_text=(
+            context.user_data.get(PENDING_THREAD_TEXT) if context.user_data else None
         ),
     )
+    if await offer_session_picker(query, context, request):
+        return
+    clear_browse_state(context.user_data)
+    await launch_window(query, context, request)

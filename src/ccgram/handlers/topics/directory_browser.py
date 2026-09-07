@@ -44,6 +44,7 @@ from ..callback_data import (
 )
 from ..user_state import (
     AWAITING_WORKTREE_BRANCH_NAME,
+    PENDING_SESSION_SELECTION,
     PENDING_WORKSPACE_ID,
     PENDING_WORKSPACES,
     PENDING_WORKTREE_BRANCH,
@@ -105,6 +106,7 @@ def clear_browse_state(user_data: dict | None) -> None:
         user_data.pop(BROWSE_PATH_KEY, None)
         user_data.pop(BROWSE_PAGE_KEY, None)
         user_data.pop(BROWSE_DIRS_KEY, None)
+        user_data.pop(PENDING_SESSION_SELECTION, None)
 
 
 def clear_worktree_state(user_data: dict | None) -> None:

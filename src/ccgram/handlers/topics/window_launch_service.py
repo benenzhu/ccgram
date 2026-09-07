@@ -20,6 +20,7 @@ from telegram.error import TelegramError
 
 from ...config import config
 from ...providers import registry as provider_registry
+from ...providers.base import ResumableSession
 from ...session import session_manager
 from ...session_map import session_map_sync
 from ...thread_router import thread_router
@@ -68,6 +69,7 @@ class WindowLaunchRequest:
     mode: str
     pending_text: str | None
     chat_id: int | None = None
+    resume_session: ResumableSession | None = None
     # Worktree metadata is NOT carried in this request. It flows through
     # context.user_data via PENDING_WORKTREE_PATH / PENDING_WORKTREE_BRANCH /
     # PENDING_WORKTREE_REPO keys, read directly by _persist_worktree_state and
@@ -297,6 +299,11 @@ async def launch_window(  # noqa: PLR0912, PLR0915, C901
     approval_mode = request.mode
 
     launch_command = resolve_launch_command(provider_name, approval_mode=approval_mode)
+    if request.resume_session is not None:
+        resume_args = provider_registry.get(provider_name).make_launch_args(
+            resume_id=request.resume_session.session_id
+        )
+        launch_command = f"{launch_command} {resume_args}"
 
     chosen_workspace_id: str | None = (
         context.user_data.get(PENDING_WORKSPACE_ID) if context.user_data else None
@@ -407,6 +414,27 @@ async def launch_window(  # noqa: PLR0912, PLR0915, C901
             if provider.capabilities.supports_hook
             else True
         )
+        resumed = request.resume_session
+        if (
+            not map_entry_found
+            and resumed is not None
+            and resumed.transcript_path
+            and tmux_manager.capabilities.native_topic_targets is not True
+        ):
+            # A selected transcript supplies an exact identity even without
+            # hooks. Never replace it with the newest chat sharing this cwd.
+            # Herdr still requires registration under its attested target.
+            await asyncio.to_thread(
+                session_map_sync.write_hookless_session_map,
+                created_wid,
+                resumed.session_id,
+                selected_path,
+                resumed.transcript_path,
+                provider_name,
+            )
+            map_entry_found = await session_map_sync.wait_for_session_map_entry(
+                created_wid, resolve_window_id=window_query.resolve_window_alias
+            )
     except BaseException:
         created_wid = _follow_supersession(created_wid)
         if await tmux_manager.kill_window(created_wid):
@@ -462,10 +490,10 @@ async def launch_window(  # noqa: PLR0912, PLR0915, C901
     except TelegramError as e:
         logger.debug("Failed to rename topic: %s", e)
 
-    await safe_edit(
-        query,
-        f"✅ {message}\n\nBound to this topic. Send messages here.",
+    session_note = (
+        "Conversation resumed." if request.resume_session else "Bound to this topic."
     )
+    await safe_edit(query, f"✅ {message}\n\n{session_note} Send messages here.")
 
     pending_text = request.pending_text
     if pending_text:

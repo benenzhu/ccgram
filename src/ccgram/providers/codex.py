@@ -14,6 +14,7 @@ Modern Codex ``response_item`` payloads use typed shapes:
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,6 +27,7 @@ from ccgram.providers.base import (
     AgentMessage,
     MessageRole,
     ProviderCapabilities,
+    ResumableSession,
     SessionStartEvent,
     StatusUpdate,
 )
@@ -545,7 +547,7 @@ def _read_codex_session_meta(fpath: Path) -> dict[str, Any] | None:
     try:
         with open(fpath, encoding="utf-8") as f:
             first_line = f.readline()
-    except OSError:
+    except OSError, UnicodeError:
         return None
     if not first_line:
         return None
@@ -553,7 +555,7 @@ def _read_codex_session_meta(fpath: Path) -> dict[str, Any] | None:
         data = json.loads(first_line)
     except json.JSONDecodeError:
         return None
-    if data.get("type") != "session_meta":
+    if not isinstance(data, dict) or data.get("type") != "session_meta":
         return None
     payload = data.get("payload")
     return payload if isinstance(payload, dict) else None
@@ -591,6 +593,47 @@ def _is_primary_codex_session(meta: dict[str, Any]) -> bool:
     return "subagent" not in source
 
 
+def _read_codex_session_summary(path: Path) -> str:
+    """Use the first human prompt as the picker label, skipping injected context."""
+    try:
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                payload = entry.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                text = ""
+                if entry.get("type") == "event_msg":
+                    if payload.get("type") == "user_message":
+                        text = payload.get("message", "")
+                elif (
+                    entry.get("type") in {"response_item", "input_item"}
+                    and payload.get("role") == "user"
+                ):
+                    text = _extract_text_blocks(payload.get("content"))
+                if (
+                    isinstance(text, str)
+                    and text.strip()
+                    and not text.lstrip().startswith(
+                        (
+                            "# AGENTS.md instructions",
+                            "<environment_context",
+                            "<permissions",
+                            "<user_instructions",
+                        )
+                    )
+                ):
+                    return text.strip()
+    except OSError, UnicodeError:
+        pass
+    return ""
+
+
 class CodexProvider(JsonlProvider):
     """AgentProvider implementation for OpenAI Codex CLI."""
 
@@ -600,6 +643,7 @@ class CodexProvider(JsonlProvider):
         supports_hook=True,
         hook_install_managed_by_ccgram=True,
         supports_resume=True,
+        supports_resume_picker=True,
         supports_continue=True,
         supports_structured_transcript=True,
         builtin_commands=tuple(_CODEX_BUILTINS.keys()),
@@ -631,6 +675,57 @@ class CodexProvider(JsonlProvider):
         if use_continue:
             return "resume --last"
         return ""
+
+    def discover_resumable_sessions(
+        self,
+        *,
+        cwd: str | None = None,
+        limit: int | None = None,
+    ) -> list[ResumableSession]:
+        """Enumerate saved interactive chats, including old and idle sessions."""
+        if limit is not None and limit <= 0:
+            return []
+        try:
+            resolved_cwd = str(Path(cwd).expanduser().resolve()) if cwd else None
+            codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+            files = _collect_codex_sessions(codex_home.expanduser() / "sessions")
+        except OSError, ValueError:
+            return []
+        sessions: list[ResumableSession] = []
+        seen_ids: set[str] = set()
+        for mtime, path in files:
+            meta = _read_codex_session_meta(path)
+            if meta is None or not _is_primary_codex_session(meta):
+                continue
+            session_id, file_cwd = meta.get("id"), meta.get("cwd")
+            if (
+                not isinstance(session_id, str)
+                or not RESUME_ID_RE.fullmatch(session_id)
+                or session_id in seen_ids
+                or not isinstance(file_cwd, str)
+                or not Path(file_cwd).is_absolute()
+            ):
+                continue
+            try:
+                session_cwd = str(Path(file_cwd).resolve())
+            except OSError, ValueError:
+                continue
+            if resolved_cwd is not None and session_cwd != resolved_cwd:
+                continue
+            seen_ids.add(session_id)
+            sessions.append(
+                ResumableSession(
+                    session_id=session_id,
+                    summary=_read_codex_session_summary(path) or session_id[:12],
+                    cwd=session_cwd,
+                    provider_name="codex",
+                    mtime=mtime,
+                    transcript_path=str(path),
+                )
+            )
+            if limit is not None and len(sessions) >= limit:
+                break
+        return sessions
 
     # ── Codex-specific transcript parsing ─────────────────────────────
 
