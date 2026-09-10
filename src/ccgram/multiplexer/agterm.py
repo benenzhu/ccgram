@@ -680,6 +680,14 @@ class AgtermManager:
             return None
         return await self.capture_pane(window_id, with_ansi=with_ansi)
 
+    async def window_dims(self, window_id: str) -> PaneDims | None:
+        del window_id
+        return None
+
+    async def resize_window(self, window_id: str, *, width: int, height: int) -> bool:
+        del window_id, width, height
+        return False
+
     async def pane_dims(self, window_id: str) -> PaneDims | None:
         """Always None — agterm reports no pane geometry over the control channel."""
         del window_id

@@ -15,6 +15,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .utils import ccgram_dir
+from .multiplexer.viewport import DEFAULT_COLUMNS, DEFAULT_ROWS, valid_viewport_size
 
 logger = structlog.get_logger()
 
@@ -218,6 +219,12 @@ class Config:
         """Select the terminal-multiplexer backend."""
         # tmux default; herdr and agterm opt-in.
         self.multiplexer_name: str = os.getenv("CCGRAM_MULTIPLEXER", "tmux")
+        self.tmux_width = _parse_int_env("CCGRAM_TMUX_WIDTH", DEFAULT_COLUMNS)
+        self.tmux_height = _parse_int_env("CCGRAM_TMUX_HEIGHT", DEFAULT_ROWS)
+        if not valid_viewport_size(self.tmux_width, self.tmux_height):
+            raise ValueError(
+                "CCGRAM_TMUX_WIDTH must be 80–240 and CCGRAM_TMUX_HEIGHT must be 24–80"
+            )
 
     def _init_live_view(self) -> None:
         self.live_view_interval: int = max(

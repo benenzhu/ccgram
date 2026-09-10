@@ -56,6 +56,7 @@ from .vim_state import (
     notify_vim_insert_seen,
     reset_vim_state,
 )
+from .viewport import valid_viewport_size
 
 __all__ = [
     "PaneInfo",
@@ -101,6 +102,7 @@ _TMUX_CAPABILITIES = MultiplexerCapabilities(
     recovers_stale_ids_by_name=True,
     supports_workspace_selection=False,
     native_topic_targets=False,
+    supports_window_resize=True,
 )
 
 
@@ -993,6 +995,7 @@ class TmuxManager:
                 )
 
                 new_window_id = window.window_id or ""
+                window.resize(width=config.tmux_width, height=config.tmux_height)
                 pane = window.active_pane
 
                 # Disable interactive editors — Telegram users can't see
@@ -1072,6 +1075,51 @@ class TmuxManager:
         if text is None:
             return None
         return CaptureResult(text=text, truncated=truncated)
+
+    async def window_dims(self, window_id: str) -> PaneDims | None:
+        """Read whole-window dimensions, including all split panes."""
+
+        def _read() -> PaneDims | None:
+            session = self.get_session()
+            window = (
+                session.windows.get(window_id=window_id, default=None)
+                if session
+                else None
+            )
+            if window is None:
+                return None
+            return PaneDims(
+                width=int(window.window_width or 0),
+                height=int(window.window_height or 0),
+            )
+
+        try:
+            return await asyncio.to_thread(_read)
+        except _TmuxError:
+            return None
+
+    async def resize_window(self, window_id: str, *, width: int, height: int) -> bool:
+        """Resize only a window belonging to the configured tmux session."""
+        if not valid_viewport_size(width, height):
+            return False
+
+        def _resize() -> bool:
+            session = self.get_session()
+            window = (
+                session.windows.get(window_id=window_id, default=None)
+                if session
+                else None
+            )
+            if window is None:
+                return False
+            window.resize(width=width, height=height)
+            return True
+
+        try:
+            return await asyncio.to_thread(_resize)
+        except _TmuxError:
+            logger.warning("Failed to resize terminal window", window_id=window_id)
+            return False
 
     async def pane_dims(self, window_id: str) -> PaneDims | None:
         """Return the active pane's column/row dimensions, or None on failure."""

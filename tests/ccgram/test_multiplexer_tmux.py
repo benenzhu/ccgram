@@ -51,6 +51,7 @@ def test_capabilities_full_snapshot(mgr: TmuxManager) -> None:
         "recovers_stale_ids_by_name": True,
         "supports_workspace_selection": False,
         "native_topic_targets": False,
+        "supports_window_resize": True,
     }
 
 

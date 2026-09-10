@@ -31,6 +31,8 @@ CONTRACT_METHODS = (
     "list_windows_for_reconciliation",
     "capture_scrollback",
     "pane_dims",
+    "window_dims",
+    "resize_window",
     "send",
     "send_to_pane",
     "kill_window",
@@ -106,6 +108,7 @@ def test_backend_capabilities_shape(backend: Multiplexer) -> None:
     assert isinstance(caps.native_worktrees, bool)
     assert isinstance(caps.supports_workspace_selection, bool)
     assert isinstance(caps.native_topic_targets, bool)
+    assert isinstance(caps.supports_window_resize, bool)
 
 
 def test_tmux_capability_values() -> None:

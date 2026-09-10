@@ -567,6 +567,13 @@ Both values are clamped to a minimum of 1 second.
 
 `/screenshot` (or the 📷 status-bar button) captures the current viewport of the bound tmux pane as a readable PNG with ANSI color.
 
+On tmux, **Smaller**, **Default**, and **Larger** below a screenshot resize the
+terminal window and refresh that image. This changes terminal wrapping and the
+space available for status bars, including when viewing the same window locally.
+New ccgram-created windows default to **160 columns × 45 rows**; configure
+`CCGRAM_TMUX_WIDTH` (80–240) and `CCGRAM_TMUX_HEIGHT` (24–80) to change that size.
+The **Default** button restores the configured dimensions.
+
 Live view (auto-refreshing) uses the same viewport capture at a smaller font size for lower file sizes.
 
 ## Last Reply (`/last`)

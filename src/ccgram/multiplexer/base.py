@@ -279,6 +279,9 @@ class MultiplexerCapabilities:
     native_topic_targets: bool = False
     """True when creation must use the backend's guarded topic-target flow."""
 
+    supports_window_resize: bool = False
+    """True when a window's terminal viewport can be resized remotely."""
+
 
 # ── Protocol ───────────────────────────────────────────────────────────
 
@@ -362,6 +365,14 @@ class Multiplexer(Protocol):
         ``lines`` is clamped to ``capabilities.read_max_lines`` when set.
         Returns None on failure.
         """
+        ...
+
+    async def window_dims(self, window_id: str) -> PaneDims | None:
+        """Return the whole window's columns/rows, or None if unsupported."""
+        ...
+
+    async def resize_window(self, window_id: str, *, width: int, height: int) -> bool:
+        """Resize a terminal window; return False if unsupported or missing."""
         ...
 
     async def pane_dims(self, window_id: str) -> PaneDims | None:

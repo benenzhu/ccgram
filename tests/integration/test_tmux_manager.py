@@ -7,6 +7,8 @@ import shutil
 import pytest
 
 from ccgram.multiplexer.tmux import TmuxManager
+from ccgram.multiplexer.base import PaneDims
+from ccgram.config import config
 
 pytestmark = [
     pytest.mark.integration,
@@ -55,6 +57,37 @@ async def test_find_window_by_id(tmux, tmp_path) -> None:
     found = await tmux.find_window_by_id(window_id)
     assert found is not None
     assert found.window_name == "find-me"
+
+
+async def test_new_window_uses_configured_viewport(tmux, tmp_path) -> None:
+    ok, _msg, _name, window_id = await tmux.create_window(
+        str(tmp_path), window_name="viewport-default", start_agent=False
+    )
+    assert ok
+    assert await tmux.window_dims(window_id) == PaneDims(
+        config.tmux_width, config.tmux_height
+    )
+
+
+async def test_resize_changes_only_selected_window(tmux, tmp_path) -> None:
+    ok, _msg, _name, selected = await tmux.create_window(
+        str(tmp_path), window_name="viewport-selected", start_agent=False
+    )
+    assert ok
+    ok, _msg, _name, other = await tmux.create_window(
+        str(tmp_path), window_name="viewport-other", start_agent=False
+    )
+    assert ok
+    original_other = await tmux.window_dims(other)
+    assert await tmux.resize_window(selected, width=200, height=55)
+    assert await tmux.window_dims(selected) == PaneDims(200, 55)
+    assert await tmux.window_dims(other) == original_other
+
+    assert not await tmux.resize_window(selected, width=10000, height=55)
+    assert await tmux.window_dims(selected) == PaneDims(200, 55)
+    foreign_manager = TmuxManager(session_name=TEST_SESSION + "-absent")
+    assert not await foreign_manager.resize_window(selected, width=120, height=36)
+    assert await tmux.window_dims(selected) == PaneDims(200, 55)
 
 
 async def test_kill_window(tmux, tmp_path) -> None:

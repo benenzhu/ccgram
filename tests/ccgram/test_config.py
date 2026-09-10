@@ -24,6 +24,28 @@ class TestConfigValid:
         cfg = Config()
         assert cfg.tmux_session_name == "mysession"
 
+    def test_tmux_viewport_defaults_and_override(self, monkeypatch):
+        cfg = Config()
+        assert (cfg.tmux_width, cfg.tmux_height) == (160, 45)
+        monkeypatch.setenv("CCGRAM_TMUX_WIDTH", "200")
+        monkeypatch.setenv("CCGRAM_TMUX_HEIGHT", "60")
+        cfg = Config()
+        assert (cfg.tmux_width, cfg.tmux_height) == (200, 60)
+
+    @pytest.mark.parametrize(
+        ("name", "value"),
+        [
+            ("CCGRAM_TMUX_WIDTH", "0"),
+            ("CCGRAM_TMUX_WIDTH", "99999"),
+            ("CCGRAM_TMUX_HEIGHT", "1"),
+            ("CCGRAM_TMUX_HEIGHT", "99999"),
+        ],
+    )
+    def test_invalid_tmux_viewport_rejected(self, monkeypatch, name, value):
+        monkeypatch.setenv(name, value)
+        with pytest.raises(ValueError, match="CCGRAM_TMUX"):
+            Config()
+
     def test_custom_monitor_poll_interval(self, monkeypatch):
         monkeypatch.setenv("MONITOR_POLL_INTERVAL", "5.0")
         cfg = Config()

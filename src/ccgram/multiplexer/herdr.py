@@ -990,6 +990,14 @@ class HerdrManager:
             return None
         return CaptureResult(text=text, truncated=effective != lines)
 
+    async def window_dims(self, window_id: str) -> PaneDims | None:
+        del window_id
+        return None
+
+    async def resize_window(self, window_id: str, *, width: int, height: int) -> bool:
+        del window_id, width, height
+        return False
+
     async def pane_dims(self, window_id: str) -> PaneDims | None:
         try:
             record = await self.guard_session_target(window_id)

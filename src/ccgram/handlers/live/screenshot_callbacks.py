@@ -15,6 +15,7 @@ toolbar_callbacks.py.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+import asyncio
 import contextlib
 import io
 import time
@@ -34,6 +35,8 @@ from ...screenshot import text_to_image
 from ...telegram_client import PTBTelegramClient
 from ...thread_router import thread_router
 from ...multiplexer import multiplexer as tmux_manager
+from ...multiplexer.base import PaneDims
+from ...multiplexer.viewport import adjusted_viewport
 
 from ..callback_data import (
     CB_KEYS_PREFIX,
@@ -42,6 +45,7 @@ from ..callback_data import (
     CB_PANE_DELIMITER,
     CB_PANE_SCREENSHOT,
     CB_SCREENSHOT_REFRESH,
+    CB_SCREENSHOT_RESIZE,
     CB_STATUS_SCREENSHOT,
 )
 from ..callback_helpers import get_thread_id, parse_target, user_owns_window
@@ -98,29 +102,46 @@ def build_screenshot_keyboard(
             ),
         )
 
-    return InlineKeyboardMarkup(
+    rows = [
+        [btn("\u2423 Space", "spc"), btn("\u2191", "up"), btn("\u21e5 Tab", "tab")],
+        [btn("\u2190", "lt"), btn("\u2193", "dn"), btn("\u2192", "rt")],
+        [btn("\u238b Esc", "esc"), btn("^C", "cc"), btn("\u23ce Enter", "ent")],
         [
-            [btn("\u2423 Space", "spc"), btn("\u2191", "up"), btn("\u21e5 Tab", "tab")],
-            [btn("\u2190", "lt"), btn("\u2193", "dn"), btn("\u2192", "rt")],
-            [btn("\u238b Esc", "esc"), btn("^C", "cc"), btn("\u23ce Enter", "ent")],
+            InlineKeyboardButton(
+                "\U0001f4fa Live",
+                callback_data=compact_callback_data(
+                    CB_LIVE_START, f"{CB_LIVE_START}{target}", window_id
+                ),
+            ),
+            InlineKeyboardButton(
+                "\U0001f504 Refresh",
+                callback_data=compact_callback_data(
+                    CB_SCREENSHOT_REFRESH,
+                    f"{CB_SCREENSHOT_REFRESH}{target}",
+                    window_id,
+                ),
+            ),
+        ],
+    ]
+    if tmux_manager.capabilities.supports_window_resize is True:
+        rows.append(
             [
                 InlineKeyboardButton(
-                    "\U0001f4fa Live",
+                    label,
                     callback_data=compact_callback_data(
-                        CB_LIVE_START, f"{CB_LIVE_START}{target}", window_id
-                    ),
-                ),
-                InlineKeyboardButton(
-                    "\U0001f504 Refresh",
-                    callback_data=compact_callback_data(
-                        CB_SCREENSHOT_REFRESH,
-                        f"{CB_SCREENSHOT_REFRESH}{target}",
+                        CB_SCREENSHOT_RESIZE,
+                        f"{CB_SCREENSHOT_RESIZE}{action}:{target}",
                         window_id,
                     ),
-                ),
-            ],
-        ]
-    )
+                )
+                for label, action in (
+                    ("➖ Smaller", "smaller"),
+                    ("↺ Default", "reset"),
+                    ("➕ Larger", "larger"),
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(rows)
 
 
 async def _handle_live_start(
@@ -297,11 +318,49 @@ async def handle_screenshot_callback(
 
     without_update = {
         CB_SCREENSHOT_REFRESH: _handle_refresh,
+        CB_SCREENSHOT_RESIZE: _handle_resize,
     }
     for prefix, handler in without_update.items():
         if data.startswith(prefix):
             await handler(query, user_id, data)
             return
+
+
+async def _handle_resize(query: CallbackQuery, user_id: int, data: str) -> None:
+    """Resize the terminal viewport and recapture the same screenshot target."""
+    # Lazy: keep command-local configuration lookup consistent with /screenshot.
+    from ...config import config
+
+    action, separator, target = data[len(CB_SCREENSHOT_RESIZE) :].partition(":")
+    if not separator or action not in ("smaller", "reset", "larger"):
+        await query.answer("Invalid size action", show_alert=True)
+        return
+    window_id, _pane_id = parse_target(target)
+    chat_id = query.message.chat.id if query.message else None
+    if not user_owns_window(user_id, window_id, chat_id):
+        await query.answer("Not your session", show_alert=True)
+        return
+    if tmux_manager.capabilities.supports_window_resize is not True:
+        await query.answer("Terminal resizing is not supported here", show_alert=True)
+        return
+    current = await tmux_manager.window_dims(window_id)
+    if current is None:
+        await query.answer("Window no longer exists", show_alert=True)
+        return
+    size = adjusted_viewport(
+        current, action, PaneDims(config.tmux_width, config.tmux_height)
+    )
+    if size == current:
+        await query.answer(f"Already {size.width} × {size.height}")
+        return
+    if not await tmux_manager.resize_window(
+        window_id, width=size.width, height=size.height
+    ):
+        await query.answer("Failed to resize terminal", show_alert=True)
+        return
+    # Give terminal applications a chance to redraw after SIGWINCH.
+    await asyncio.sleep(0.3)
+    await _handle_refresh(query, user_id, f"{CB_SCREENSHOT_REFRESH}{target}")
 
 
 async def _handle_refresh(query: CallbackQuery, user_id: int, data: str) -> None:
@@ -652,6 +711,7 @@ async def panes_command(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> 
     CB_LIVE_START,
     CB_LIVE_STOP,
     CB_SCREENSHOT_REFRESH,
+    CB_SCREENSHOT_RESIZE,
     CB_STATUS_SCREENSHOT,
     CB_PANE_SCREENSHOT,
 )

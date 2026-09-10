@@ -41,6 +41,7 @@ CB_WIN_CANCEL = "wb:cancel"
 
 # Screenshot
 CB_SCREENSHOT_REFRESH = "ss:ref:"
+CB_SCREENSHOT_RESIZE = "ss:size:"  # ss:size:<smaller|reset|larger>:<window>|<pane>
 
 # Interactive UI (aq: prefix kept for backward compatibility)
 CB_ASK_UP = "aq:up:"  # aq:up:<window>
