@@ -114,8 +114,7 @@ class Config:
         else:
             self.group_id = None
 
-        # Provider selection
-        self.provider_name: str = os.getenv("CCGRAM_PROVIDER", "claude")
+        self._init_topic_creation()
 
         self._init_multiplexer()
 
@@ -200,6 +199,20 @@ class Config:
             len(self.allowed_users),
             self.tmux_session_name,
         )
+
+    def _init_topic_creation(self) -> None:
+        """Configure optional steps in the new-session flow."""
+        self.provider_name: str = os.getenv("CCGRAM_PROVIDER", "claude")
+        self.default_approval_mode = (
+            os.getenv("CCGRAM_DEFAULT_APPROVAL_MODE", "ask").strip().lower()
+        )
+        if self.default_approval_mode not in ("ask", "normal", "yolo"):
+            raise ValueError(
+                "CCGRAM_DEFAULT_APPROVAL_MODE must be ask, normal, or yolo"
+            )
+        self.worktree_enabled = os.getenv(
+            "CCGRAM_WORKTREE_ENABLED", "true"
+        ).lower() in ("1", "true", "yes")
 
     def _init_multiplexer(self) -> None:
         """Select the terminal-multiplexer backend."""

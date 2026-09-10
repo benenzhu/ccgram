@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
+from ...config import config
 from telegram import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -459,6 +460,11 @@ async def _handle_confirm(
             )
             return
 
+    if not config.worktree_enabled:
+        clear_worktree_state(context.user_data)
+        await _show_workspace_picker_or_provider(query, selected_path, context)
+        return
+
     # Eligible git repo → offer the worktree step before provider pick.
     # Ineligible (non-git, bare, detached, mid-rebase) → unchanged flow.
     # Offloaded: check_worktree_eligibility runs blocking git subprocesses.
@@ -509,6 +515,9 @@ async def _handle_worktree_callback(
         return
     if get_thread_id(update) != pending_tid:
         await query.answer("Stale browser (topic mismatch)", show_alert=True)
+        return
+    if not config.worktree_enabled:
+        await _handle_wt_use_current(query, context)
         return
     if data == CB_WT_USE_CURRENT:
         await _handle_wt_use_current(query, context)

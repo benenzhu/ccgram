@@ -18,7 +18,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ccgram.expandable_quote import EXPANDABLE_QUOTE_START, format_expandable_quote
-from ccgram.tool_format import format_tool_details, format_tool_line
+from ccgram.tool_format import (
+    format_ccbot_tool_result,
+    format_tool_details,
+    format_tool_line,
+    use_ccbot_tool_style,
+)
 
 from .utils import shorten_path
 
@@ -363,6 +368,9 @@ class TranscriptParser:
         """
         if not text:
             return ""
+
+        if use_ccbot_tool_style():
+            return format_ccbot_tool_result(text, tool_name)
 
         line_count = text.count("\n") + 1 if text else 0
 

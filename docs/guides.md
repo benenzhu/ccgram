@@ -639,7 +639,24 @@ Action names must be ≤24 chars (callback_data budget). Providers absent from t
 
 When you forward a slash command that opens a modal in-TUI picker (e.g. Claude `/model`, `/login`, `/theme`; Codex/Gemini `/model`; Pi `/model`), the topic reply adds a hint pointing at `/toolbar` to drive the picker with arrow keys. The hint adapts to your toolbar — if you removed Up/Down/Enter/Esc keys, the hint degrades to "Open /toolbar to drive the picker."
 
+For terminal-style tool messages, set `CCGRAM_TOOL_STYLE=ccbot`. Claude and
+Codex tool calls use headings such as `Bash(command)` and results such as
+`⎿ Output 5 lines`, followed by expandable output. Multiline commands keep
+their line breaks; headings use ccbot's 200-character argument limit. In verbose
+mode, the result updates the original tool message with its command and output.
+
 ## Git Worktree Topics
+
+Set `CCGRAM_WORKTREE_ENABLED=false` to skip the worktree picker and launch in
+the selected directory. Set `CCGRAM_DEFAULT_APPROVAL_MODE=yolo` to also skip
+the mode picker for providers that support YOLO (`normal` skips it with normal
+permissions; the default `ask` keeps the picker).
+
+For Codex, `CCGRAM_CODEX_AUTO_TRUST=true` adds a per-launch
+[`projects.<path>.trust_level="trusted"` override](https://learn.chatgpt.com/docs/config-file/config-reference)
+for the selected directory, including resumed sessions. This skips the initial
+directory-trust prompt without changing `~/.codex/config.toml`. It defaults to
+`false` and is independent of YOLO mode.
 
 When you create a new topic and pick a directory that's an **eligible git repo** (in-work-tree, not bare, on a named branch, no in-progress merge/rebase), an extra step appears between directory-confirm and provider-pick:
 

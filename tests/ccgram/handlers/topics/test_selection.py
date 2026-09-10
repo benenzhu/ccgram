@@ -280,7 +280,9 @@ class TestHandleModeSelect:
             query, 100, f"{CB_MODE_SELECT}codex:yolo", update, context
         )
 
-        mock_resolve_launch.assert_called_once_with("codex", approval_mode="yolo")
+        mock_resolve_launch.assert_called_once_with(
+            "codex", approval_mode="yolo", cwd="/tmp/proj"
+        )
         mock_tmux.create_window.assert_called_once_with(
             "/tmp/proj",
             launch_command="codex --dangerously-bypass-approvals-and-sandbox",

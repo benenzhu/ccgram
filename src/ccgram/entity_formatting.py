@@ -171,8 +171,15 @@ def convert_to_entities(text: str) -> tuple[str, list[TelegramEntity]]:
     result_text = ""
     result_entities: list[TelegramEntity] = []
 
-    for is_quote, segment in segments:
+    for index, (is_quote, segment) in enumerate(segments):
         if is_quote:
+            # Markdown conversion trims the preceding segment's final newline.
+            if (
+                index
+                and segments[index - 1][1].endswith("\n")
+                and not result_text.endswith("\n")
+            ):
+                result_text += "\n"
             quote_text, _was_truncated = _truncate_quote_text(segment)
             offset = _utf16_len(result_text)
             length = _utf16_len(quote_text)

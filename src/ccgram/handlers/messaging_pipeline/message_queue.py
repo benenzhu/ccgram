@@ -34,6 +34,7 @@ from ...delivery_contract import (
 from ...telegram_client import TelegramClient
 from ...telegram_rate_limiter import retry_after_seconds
 from ...thread_router import thread_router
+from ...tool_format import use_ccbot_tool_style
 from ...topic_state_registry import topic_state
 from ...window_resolver import resolve_window_alias
 from ...multiplexer.window_liveness import is_window_live, reset_window_liveness
@@ -948,7 +949,7 @@ async def _try_edit_tool_result(
     if task.content_type != "tool_result" or not task.tool_use_id:
         return False
     key = (task.tool_use_id, user_id, tkey)
-    if get_batch_mode(task.window_id) == "verbose":
+    if get_batch_mode(task.window_id) == "verbose" and not use_ccbot_tool_style():
         # Keep the command/arguments visible when its result arrives.
         _tool_msg_ids.pop(key, None)
         return False
@@ -1007,7 +1008,12 @@ async def _process_content_task(  # noqa: C901 — text, table, and tool deliver
     last_msg_id: int | None = None
     for part in task.parts:
         sent = None
-        if first_part and task.content_type == "tool_result" and task.tool_name:
+        if (
+            first_part
+            and task.content_type == "tool_result"
+            and task.tool_name
+            and not use_ccbot_tool_style()
+        ):
             part = f"↳ **{task.tool_name} result**\n{part}"
         native_table = (
             task.role == "assistant"
@@ -1053,7 +1059,7 @@ async def _process_content_task(  # noqa: C901 — text, table, and tool deliver
         last_msg_id
         and task.tool_use_id
         and task.content_type == "tool_use"
-        and get_batch_mode(task.window_id) != "verbose"
+        and (get_batch_mode(task.window_id) != "verbose" or use_ccbot_tool_style())
     ):
         _tool_msg_ids[(task.tool_use_id, user_id, tkey)] = last_msg_id
     return DeliveryOutcome.DELIVERED

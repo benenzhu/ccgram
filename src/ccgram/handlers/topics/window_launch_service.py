@@ -19,7 +19,7 @@ import structlog
 from telegram.error import TelegramError
 
 from ...config import config
-from ...providers import registry as provider_registry
+from ...providers import detect_provider_from_command, registry as provider_registry
 from ...providers.base import ResumableSession
 from ...session import session_manager
 from ...session_map import session_map_sync
@@ -212,6 +212,21 @@ async def _wait_for_shell_ready(window_id: str, *, attempts: int = 5) -> None:
         await asyncio.sleep(0.2)
 
 
+async def _can_defer_codex_registration(provider_name: str, window_id: str) -> bool:
+    """Keep a running Codex in its stable tmux window until the first prompt.
+
+    Some Codex versions defer their hook/transcript until input arrives. That
+    input is forwarded only after launch completes. A missing record must not
+    kill a live Codex, but a failed CLI or a guarded native target still fails.
+    """
+    if provider_name != "codex" or tmux_manager.capabilities.name != "tmux":
+        return False
+    window = await tmux_manager.find_window_by_id(window_id)
+    return bool(
+        window and detect_provider_from_command(window.pane_current_command) == "codex"
+    )
+
+
 async def _accept_yolo_confirmation(
     window_id: str, *, timeout: float | None = None
 ) -> bool:
@@ -298,7 +313,9 @@ async def launch_window(  # noqa: PLR0912, PLR0915, C901
     provider_name = request.provider_name
     approval_mode = request.mode
 
-    launch_command = resolve_launch_command(provider_name, approval_mode=approval_mode)
+    launch_command = resolve_launch_command(
+        provider_name, approval_mode=approval_mode, cwd=selected_path
+    )
     if request.resume_session is not None:
         resume_args = provider_registry.get(provider_name).make_launch_args(
             resume_id=request.resume_session.session_id
@@ -435,6 +452,14 @@ async def launch_window(  # noqa: PLR0912, PLR0915, C901
             map_entry_found = await session_map_sync.wait_for_session_map_entry(
                 created_wid, resolve_window_id=window_query.resolve_window_alias
             )
+        if not map_entry_found and await _can_defer_codex_registration(
+            provider_name, created_wid
+        ):
+            logger.info(
+                "Codex is running; deferring session registration until input",
+                window_id=created_wid,
+            )
+            map_entry_found = True
     except BaseException:
         created_wid = _follow_supersession(created_wid)
         if await tmux_manager.kill_window(created_wid):

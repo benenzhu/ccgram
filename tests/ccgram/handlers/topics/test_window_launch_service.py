@@ -10,7 +10,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from ccgram.multiplexer.base import TopicTargetResult
-from ccgram.providers import registry as provider_registry
+from ccgram.providers import get_provider_for_window
 from ccgram.providers.base import ResumableSession
 from ccgram.handlers.topics.window_launch_service import (
     WindowLaunchRequest,
@@ -328,6 +328,46 @@ def _request(**overrides) -> WindowLaunchRequest:
 
 
 class TestLaunchWindowSuccess:
+    @pytest.mark.parametrize(
+        ("backend", "command", "succeeds"),
+        [("tmux", "codex", True), ("tmux", "bash", False), ("herdr", "codex", False)],
+    )
+    async def test_missing_registration_keeps_only_live_codex_tmux_window(
+        self, tmp_path, backend, command, succeeds
+    ) -> None:
+        with (
+            _launch_env(supports_hook=True, launch_command="codex") as m,
+            patch(
+                f"{_MODULE}send_telegram_to_window", AsyncMock(return_value=(True, ""))
+            ) as send,
+        ):
+            m.mux.capabilities.name = backend
+            m.mux.capabilities.native_topic_targets = backend != "tmux"
+            m.mux.create_window = AsyncMock(
+                return_value=(True, "created", "project", "@5")
+            )
+            m.mux.find_window_by_id = AsyncMock(
+                return_value=MagicMock(pane_current_command=command)
+            )
+            m.session_map.wait_for_session_map_entry.return_value = False
+            result = await launch_window(
+                _make_query(),
+                _make_context(),
+                _request(
+                    cwd=str(tmp_path), provider_name="codex", pending_text="first input"
+                ),
+            )
+
+        assert result.success is succeeds
+        if succeeds:
+            m.mux.kill_window.assert_not_awaited()
+            m.router.unbind_thread.assert_not_called()
+            send.assert_awaited_once()
+            assert send.await_args.args[3] == "first input"
+        else:
+            m.mux.kill_window.assert_awaited_once_with("@5")
+            send.assert_not_awaited()
+
     @pytest.mark.parametrize("provider_name", ["claude", "codex"])
     async def test_resume_uses_selected_id_and_preserves_launch_mode(
         self, tmp_path, provider_name
@@ -336,7 +376,7 @@ class TestLaunchWindowSuccess:
         resumed = ResumableSession(
             session_id, "Saved chat", str(tmp_path), provider_name
         )
-        provider = provider_registry.get(provider_name)
+        provider = get_provider_for_window("", provider_name=provider_name)
         command = f"{provider_name} --custom-option"
         with _launch_env(launch_command=command) as m:
             m.registry.get.return_value.make_launch_args.side_effect = (

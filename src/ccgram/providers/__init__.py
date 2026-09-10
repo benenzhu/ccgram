@@ -328,7 +328,10 @@ async def detect_provider_from_pane(
 
 
 def resolve_launch_command(
-    provider_name: str, *, approval_mode: str = _APPROVAL_MODE_NORMAL
+    provider_name: str,
+    *,
+    approval_mode: str = _APPROVAL_MODE_NORMAL,
+    cwd: str | None = None,
 ) -> str:
     """Resolve launch command for a provider, with optional approval mode.
 
@@ -336,6 +339,7 @@ def resolve_launch_command(
     otherwise the provider's hardcoded default (``capabilities.launch_command``).
     When ``approval_mode`` is ``"yolo"``, appends the provider-specific
     permissive-mode flag unless it is already present.
+    With ``CCGRAM_CODEX_AUTO_TRUST=true``, Codex trusts ``cwd`` for this launch.
     """
     _ensure_registered()
     provider = provider_name.lower()
@@ -364,6 +368,17 @@ def resolve_launch_command(
         from ccgram.providers.gemini import build_hardened_gemini_launch_command
 
         command = build_hardened_gemini_launch_command(command)
+
+    if (
+        provider == "codex"
+        and cwd
+        and os.getenv("CCGRAM_CODEX_AUTO_TRUST", "false").lower()
+        in ("1", "true", "yes")
+    ):
+        # Lazy: only Codex launches need its provider-specific config renderer.
+        from ccgram.providers.codex import build_trusted_codex_launch_command
+
+        command = build_trusted_codex_launch_command(command, cwd)
 
     if approval_mode.lower() != _APPROVAL_MODE_YOLO:
         return command

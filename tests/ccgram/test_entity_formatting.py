@@ -86,6 +86,16 @@ class TestConvertToEntities:
         ]
         assert len(exp_entities) == 1
 
+    def test_expandable_quote_preserves_heading_newline_and_offset(self) -> None:
+        plain, entities = convert_to_entities(
+            f"**Bash**(echo hello)\n  ⎿  Output 1 lines\n{EXP_START}hello 🌍{EXP_END}"
+        )
+        assert plain.endswith("Output 1 lines\nhello 🌍")
+        quote = next(
+            e for e in entities if e.type == MessageEntity.EXPANDABLE_BLOCKQUOTE
+        )
+        assert _extract_utf16(plain, quote.offset, quote.length) == "hello 🌍"
+
     def test_indented_text_not_treated_as_code(self) -> None:
         text, entities = convert_to_entities(
             "Some text:\n\n    indented line\n\nMore text"

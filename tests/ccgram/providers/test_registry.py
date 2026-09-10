@@ -1,5 +1,7 @@
 import json
 import shlex
+import tomllib
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -91,6 +93,33 @@ class TestConfigProviderSettings:
 
 @pytest.mark.usefixtures("_fresh_registry")
 class TestResolveLaunchCommand:
+    @pytest.mark.parametrize(
+        "cwd", ["/tmp/project", '/tmp/a.b/it\'s "项目" $(`id`)\\path']
+    )
+    def test_codex_auto_trust_preserves_path_as_data(self, monkeypatch, cwd):
+        from ccgram.providers import resolve_launch_command
+
+        monkeypatch.setenv("CCGRAM_CODEX_AUTO_TRUST", "true")
+        monkeypatch.setenv("CCGRAM_CODEX_COMMAND", "custom-codex --no-alt-screen")
+        args = shlex.split(
+            resolve_launch_command("codex", approval_mode="yolo", cwd=cwd)
+        )
+
+        assert args[:2] == ["custom-codex", "--no-alt-screen"]
+        assert args[-1] == "--dangerously-bypass-approvals-and-sandbox"
+        override = args[args.index("-c") + 1]
+        assert tomllib.loads(override) == {
+            "projects": {str(Path(cwd).resolve()): {"trust_level": "trusted"}}
+        }
+
+    def test_codex_auto_trust_requires_opt_in_and_cwd(self, monkeypatch):
+        from ccgram.providers import resolve_launch_command
+
+        assert resolve_launch_command("codex", cwd="/tmp/project") == "codex"
+        monkeypatch.setenv("CCGRAM_CODEX_AUTO_TRUST", "true")
+        assert resolve_launch_command("codex") == "codex"
+        assert resolve_launch_command("claude", cwd="/tmp/project") == "claude"
+
     def test_default_returns_provider_command(self) -> None:
         from ccgram.providers import resolve_launch_command
 

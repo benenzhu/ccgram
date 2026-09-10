@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from ...config import config
 from ...providers import registry as provider_registry
 from ...thread_router import thread_router
 from ..callback_data import CB_MODE_SELECT, CB_PROV_SELECT
@@ -91,7 +92,7 @@ async def _handle_provider_select(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Handle CB_PROV_SELECT: select provider and show mode picker.
+    """Select a provider, using the configured mode or showing its picker.
 
     Providers without a YOLO flag (e.g. shell) skip the mode picker
     and go directly to window creation with approval_mode="normal".
@@ -118,13 +119,14 @@ async def _handle_provider_select(
     ):
         return
 
-    if not has_yolo_mode(provider_name):
+    mode = config.default_approval_mode if has_yolo_mode(provider_name) else "normal"
+    if mode != "ask":
         request = WindowLaunchRequest(
             user_id=user_id,
             thread_id=pending_thread_id,
             provider_name=provider_name,
             cwd=selected_path,
-            mode="normal",
+            mode=mode,
             pending_text=(
                 context.user_data.get(PENDING_THREAD_TEXT)
                 if context.user_data

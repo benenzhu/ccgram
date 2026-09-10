@@ -327,7 +327,7 @@ async def _create_and_bind_window(
         provider = get_provider()
         approval_mode = "normal"
     launch_command = resolve_launch_command(
-        provider.capabilities.name, approval_mode=approval_mode
+        provider.capabilities.name, approval_mode=approval_mode, cwd=cwd
     )
 
     success, message, created_wname, created_wid = await tmux_manager.create_window(

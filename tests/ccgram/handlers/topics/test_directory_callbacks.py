@@ -93,6 +93,59 @@ async def _reset_flow_with_new_command(context: MagicMock) -> None:
 
 
 class TestConfirmWorktreeGating:
+    async def test_disabled_worktrees_skip_git_probe_and_clear_pending_intent(
+        self, tmp_path: Path
+    ) -> None:
+        module = "ccgram.handlers.topics.directory_callbacks."
+        user_data = {
+            BROWSE_PATH_KEY: str(tmp_path),
+            PENDING_THREAD_ID: 42,
+            PENDING_WORKTREE_REPO: str(tmp_path),
+            PENDING_WORKTREE_BRANCH: "ccg/old-choice",
+            PENDING_WORKTREE_PATH: str(tmp_path / "unused"),
+        }
+        context = _make_context(user_data)
+        query = _make_query()
+        with (
+            patch(f"{module}config.worktree_enabled", False),
+            patch(f"{module}thread_router") as router,
+            patch(f"{module}check_worktree_eligibility") as probe,
+            patch(f"{module}_show_workspace_picker_or_provider", AsyncMock()) as pick,
+        ):
+            router.get_window_for_thread.return_value = None
+            await _handle_confirm(query, 100, _make_update(42), context)
+
+        probe.assert_not_called()
+        pick.assert_awaited_once_with(query, str(tmp_path), context)
+        assert user_data == {BROWSE_PATH_KEY: str(tmp_path), PENDING_THREAD_ID: 42}
+
+    async def test_old_worktree_confirm_uses_selected_directory_when_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        module = "ccgram.handlers.topics.directory_callbacks."
+        context = _make_context(
+            {
+                BROWSE_PATH_KEY: str(tmp_path),
+                PENDING_THREAD_ID: 42,
+                PENDING_WORKTREE_REPO: str(tmp_path),
+                PENDING_WORKTREE_BRANCH: "ccg/old-choice",
+                PENDING_WORKTREE_PATH: str(tmp_path / "unused"),
+            }
+        )
+        query = _make_query()
+        with (
+            patch(f"{module}config.worktree_enabled", False),
+            patch(f"{module}create_worktree") as create,
+            patch(f"{module}_show_workspace_picker_or_provider", AsyncMock()) as pick,
+        ):
+            await _handle_worktree_callback(
+                query, CB_WT_CONFIRM, _make_update(42), context
+            )
+
+        create.assert_not_called()
+        pick.assert_awaited_once_with(query, str(tmp_path), context)
+        assert PENDING_WORKTREE_PATH not in context.user_data
+
     @patch(
         "ccgram.handlers.topics.directory_callbacks.safe_edit", new_callable=AsyncMock
     )

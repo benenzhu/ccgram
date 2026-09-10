@@ -38,6 +38,21 @@ class TestConfigValid:
         monkeypatch.setenv("CCGRAM_YOLO_CONFIRMATION_TIMEOUT", "0")
         assert Config().yolo_confirmation_timeout == 1.0
 
+    def test_topic_creation_defaults_and_overrides(self, monkeypatch):
+        cfg = Config()
+        assert cfg.default_approval_mode == "ask"
+        assert cfg.worktree_enabled is True
+        monkeypatch.setenv("CCGRAM_DEFAULT_APPROVAL_MODE", " YOLO ")
+        monkeypatch.setenv("CCGRAM_WORKTREE_ENABLED", "false")
+        cfg = Config()
+        assert cfg.default_approval_mode == "yolo"
+        assert cfg.worktree_enabled is False
+
+    def test_invalid_default_approval_mode_is_rejected(self, monkeypatch):
+        monkeypatch.setenv("CCGRAM_DEFAULT_APPROVAL_MODE", "auto")
+        with pytest.raises(ValueError, match="CCGRAM_DEFAULT_APPROVAL_MODE"):
+            Config()
+
     def test_is_user_allowed_true(self):
         cfg = Config()
         assert cfg.is_user_allowed(12345) is True

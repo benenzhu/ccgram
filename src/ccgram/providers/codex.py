@@ -15,13 +15,20 @@ Modern Codex ``response_item`` payloads use typed shapes:
 
 import json
 import os
+import re
+import shlex
 from pathlib import Path
 from typing import Any, cast
 
 from ccgram.expandable_quote import format_expandable_quote
 from ccgram.providers.codex_format import format_codex_interactive_prompt
 from ccgram.providers._jsonl import JsonlProvider
-from ccgram.tool_format import format_tool_details, format_tool_line
+from ccgram.tool_format import (
+    format_ccbot_tool_result,
+    format_tool_details,
+    format_tool_line,
+    use_ccbot_tool_style,
+)
 from ccgram.providers.base import (
     RESUME_ID_RE,
     AgentMessage,
@@ -64,6 +71,20 @@ _TOOL_NAME_ALIASES: dict[str, str] = {
 
 # Minimum line count to trigger stats + expandable quote for tool results.
 _TOOL_RESULT_QUOTE_THRESHOLD = 3
+_EXEC_COMMAND_LITERAL_RE = re.compile(
+    r'\btools\.exec_command\(\s*\{\s*(?:cmd|"cmd")\s*:\s*("(?:\\.|[^"\\])*")'
+)
+
+
+def build_trusted_codex_launch_command(command: str, cwd: str) -> str:
+    """Trust the selected directory for this launch without editing user config.
+
+    Use an inline TOML table so dots in directory names cannot be interpreted
+    as config-key separators. Shell-quote the complete override as one argument.
+    """
+    path = json.dumps(str(Path(cwd).expanduser().resolve()), ensure_ascii=False)
+    override = f'projects={{{path}={{trust_level="trusted"}}}}'
+    return f"{command} -c {shlex.quote(override)}"
 
 
 def _format_codex_tool_result(raw_tool_name: str, output_text: str) -> str:
@@ -74,6 +95,8 @@ def _format_codex_tool_result(raw_tool_name: str, output_text: str) -> str:
     """
     if not output_text:
         return "Done"
+    if use_ccbot_tool_style() and raw_tool_name != "apply_patch":
+        return format_ccbot_tool_result(output_text, raw_tool_name)
     line_count = output_text.count("\n") + 1
 
     if raw_tool_name in ("exec_command", "shell"):
@@ -199,15 +222,67 @@ def _summarize_question(args: dict[str, Any]) -> str:
 
 
 def _extract_tool_output_text(output: Any) -> str:
-    """Extract the useful output section from Codex function_call_output."""
+    """Unwrap legacy strings and modern Codex content-block tool results."""
     if isinstance(output, str):
+        try:
+            decoded = json.loads(output)
+        except json.JSONDecodeError, ValueError:
+            decoded = None
+        if isinstance(decoded, (dict, list)):
+            return _extract_tool_output_text(decoded)
         marker = "\nOutput:\n"
         if marker in output:
             return output.split(marker, 1)[1].strip()
         return output.strip()
+    if isinstance(output, list):
+        return "\n".join(
+            text for block in output if (text := _extract_tool_output_text(block))
+        )
     if isinstance(output, dict):
-        return json.dumps(output, ensure_ascii=False)
-    return ""
+        return _extract_tool_output_mapping(output)
+    return "" if output is None else json.dumps(output, ensure_ascii=False)
+
+
+def _extract_tool_output_mapping(output: dict[str, Any]) -> str:
+    """Read text blocks, shell results, and composed tool-call envelopes."""
+    if output.get("type") in ("input_text", "output_text", "text"):
+        return _extract_tool_output_text(output.get("text", ""))
+    if output.get("type") in ("input_image", "image", "image_url"):
+        return "[Image output]"
+    if "output" in output:
+        # A shell envelope's output is already stdout. Do not reinterpret file
+        # contents containing JSON or an "Output:" heading as another wrapper.
+        inner = output["output"]
+        text = (
+            inner.strip()
+            if isinstance(inner, str)
+            else _extract_tool_output_text(inner)
+        )
+        if not text and output.get("session_id") and output.get("exit_code") is None:
+            text = "Process still running."
+        elif not text and output.get("exit_code"):
+            text = f"Process exited with code {output['exit_code']}."
+        return text
+    if output.get("status") == "fulfilled" and "value" in output:
+        return _extract_tool_output_text(output["value"])
+    if output.get("status") == "rejected" and "reason" in output:
+        return "Error: " + _extract_tool_output_text(output["reason"])
+    if isinstance(output.get("content"), list):
+        return _extract_tool_output_text(output["content"])
+    return json.dumps(output, ensure_ascii=False)
+
+
+def _single_wrapped_shell_command(input_text: str) -> str:
+    """Display a simple exec wrapper as Bash(command), without evaluating JS."""
+    if len(re.findall(r"\btools\.", input_text)) != 1:
+        return ""
+    match = _EXEC_COMMAND_LITERAL_RE.search(input_text)
+    if match is None:
+        return ""
+    try:
+        return json.loads(match[1])
+    except json.JSONDecodeError, ValueError:
+        return ""
 
 
 def _format_request_user_input_result(output_text: str) -> str:
@@ -249,12 +324,14 @@ def _parse_custom_tool_call(
     )
     tool_name = _canonical_tool_name(raw_name)
     call_id = payload.get("call_id", "")
-    if isinstance(call_id, str) and call_id:
-        pending[call_id] = (raw_name, tool_name)
 
     # For apply_patch, summarize by counting file updates in the input string.
     input_text = payload.get("input", "")
     summary = ""
+    if raw_name in ("exec", "functions.exec") and isinstance(input_text, str):
+        summary = _single_wrapped_shell_command(input_text)
+        if summary:
+            tool_name = "Bash"
     if raw_name == "apply_patch" and isinstance(input_text, str):
         file_count = input_text.count("*** Update File:")
         file_count += input_text.count("*** Add File:")
@@ -267,6 +344,12 @@ def _parse_custom_tool_call(
         summary = input_text[:512]
 
     text = format_tool_details(format_tool_line(tool_name, summary), input_text)
+    if isinstance(call_id, str) and call_id:
+        pending[call_id] = (
+            (raw_name, tool_name, text)
+            if use_ccbot_tool_style()
+            else (raw_name, tool_name)
+        )
     return (
         [
             AgentMessage(
@@ -279,6 +362,15 @@ def _parse_custom_tool_call(
         ],
         pending,
     )
+
+
+def _pending_summary(call_id: Any, pending: dict[str, Any]) -> str:
+    """Read the optional ccbot heading before consuming a pending tool."""
+    value = pending.get(call_id) if isinstance(call_id, str) else None
+    match value:
+        case (_, _, str(heading)):
+            return heading
+    return ""
 
 
 def _resolve_pending(
@@ -305,27 +397,17 @@ def _parse_custom_tool_call_output(
 ) -> tuple[list[AgentMessage], dict[str, Any]]:
     """Parse a custom_tool_call_output payload."""
     call_id = payload.get("call_id", "")
+    heading = _pending_summary(call_id, pending)
     raw_name, tool_name = _resolve_pending(call_id, pending)
 
-    # Output is typically JSON-wrapped: {"output": "..."}.
-    raw_output = payload.get("output", "")
-    output_text = ""
-    if isinstance(raw_output, str):
-        try:
-            parsed = json.loads(raw_output)
-        except json.JSONDecodeError, TypeError:
-            parsed = None
-        if isinstance(parsed, dict) and "output" in parsed:
-            output_text = str(parsed["output"]).strip()
-        else:
-            output_text = raw_output.strip()
-    elif isinstance(raw_output, dict) and "output" in raw_output:
-        output_text = str(raw_output["output"]).strip()
+    output_text = _extract_tool_output_text(payload.get("output", ""))
 
     if raw_name and output_text:
         output_text = _format_codex_tool_result(raw_name, output_text)
     if not output_text:
         output_text = "Done"
+    if heading:
+        output_text = heading + "\n" + output_text
 
     return (
         [
@@ -372,10 +454,13 @@ def _parse_function_call(
     if isinstance(call_id, str) and call_id:
         pending[call_id] = (raw_name, tool_name)
     args = _parse_tool_arguments(payload.get("arguments", {}))
+    text = _format_tool_use_text(raw_name, args)
+    if use_ccbot_tool_style() and isinstance(call_id, str) and call_id:
+        pending[call_id] = (raw_name, tool_name, text)
     return (
         [
             AgentMessage(
-                text=_format_tool_use_text(raw_name, args),
+                text=text,
                 role="assistant",
                 content_type="tool_use",
                 tool_use_id=call_id or None,
@@ -392,6 +477,7 @@ def _parse_function_call_output(
 ) -> tuple[list[AgentMessage], dict[str, Any]]:
     """Parse a function_call_output payload into a tool_result AgentMessage."""
     call_id = payload.get("call_id", "")
+    heading = _pending_summary(call_id, pending)
     raw_name, tool_name = _resolve_pending(call_id, pending)
 
     output_text = _extract_tool_output_text(payload.get("output", ""))
@@ -401,6 +487,8 @@ def _parse_function_call_output(
         output_text = _format_codex_tool_result(raw_name, output_text)
     if not output_text:
         output_text = "Done"
+    if heading:
+        output_text = heading + "\n" + output_text
 
     return (
         [

@@ -374,7 +374,7 @@ async def _create_resume_window(
     # Validate the provider-specific session ID before changing thread state.
     launch_args = provider.make_launch_args(resume_id=session_id)
     launch_command = resolve_launch_command(
-        provider.capabilities.name, approval_mode=approval_mode
+        provider.capabilities.name, approval_mode=approval_mode, cwd=cwd
     )
 
     if old_window_id:
